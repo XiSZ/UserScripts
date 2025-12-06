@@ -4,6 +4,7 @@
 // @version      0.01
 // @description  Scan URLs using urlscan.io API and display results with a GUI
 // @author       XiSZ
+// @homepage     https://github.com/XiSZ/UserScripts
 // @updateURL    https://github.com/XiSZ/UserScripts/raw/main/url-scanner.js
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest

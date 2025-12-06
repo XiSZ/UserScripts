@@ -7,6 +7,8 @@
 // @author      benjammin4dayz
 // @homepage    https://github.com/benjammin4dayz/userscripts
 // @updateURL   https://raw.githubusercontent.com/benjammin4dayz/userscripts/main/twitch.tv/picture-in-picture.js
+// @downloadURL https://raw.githubusercontent.com/benjammin4dayz/userscripts/main/twitch.tv/picture-in-picture.js
+// @supportURL  https://github.com/benjammin4dayz/userscripts/issues
 // @description Allow Picture in Picture mode to be activated by selecting a button on the top nav bar.
 // ==/UserScript==
 // @ts-check

@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         URLScan
+// @name         URLScan by XiSZ
 // @namespace    http://tampermonkey.net/
 // @version      0.01
 // @description  Scan URLs using urlscan.io API and display results with a GUI

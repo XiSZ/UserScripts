@@ -17,4 +17,4 @@ These scripts can be used as browser userscripts or standalone utilities dependi
 
 ## License
 
-See repository for license information.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

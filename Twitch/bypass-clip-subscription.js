@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch Bypass Subscription Restrictions
 // @namespace    http://tampermonkey.net/
-// @version      0.01
+// @version      0.02
 // @description  Bypass subscriber-only clip creation and VOD restrictions on Twitch
 // @author       XiSZ
 // @icon         https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png
@@ -17,109 +17,123 @@
 (function () {
   "use strict";
 
-  // Override the XHR and Fetch to intercept clip creation requests
+  console.log("[Twitch Bypass] Script initializing...");
+
+  // Store original functions
   const originalFetch = window.fetch;
-  const originalXHROpen = XMLHttpRequest.prototype.open;
-  const originalXHRSend = XMLHttpRequest.prototype.send;
+  const originalDefineProperty = Object.defineProperty;
+  const originalJSONParse = JSON.parse;
 
-  // Intercept fetch requests
-  window.fetch = function (...args) {
-    const url = args[0];
+  // Intercept JSON.parse to modify GraphQL responses
+  JSON.parse = function (text) {
+    const result = originalJSONParse.apply(this, arguments);
 
-    // Check if this is a GraphQL request (Twitch uses GraphQL)
-    if (typeof url === "string" && url.includes("gql.twitch.tv")) {
-      const options = args[1] || {};
-
-      // Clone the request to modify it if needed
-      if (options.body) {
-        try {
-          const body = JSON.parse(options.body);
-
-          // Check if this is a clip creation request
-          if (
-            body.operationName === "CreateClip" ||
-            (body.query && body.query.includes("createClip"))
-          ) {
-            console.log("[Twitch Bypass] Intercepted clip creation request");
+    try {
+      // Check if this is a GraphQL response with extensions
+      if (result && result.data && result.extensions) {
+        // Look for channel data
+        if (result.data.channel) {
+          // Enable clipping if disabled
+          if (result.data.channel.self) {
+            if (result.data.channel.self.canClip === false) {
+              result.data.channel.self.canClip = true;
+              console.log("[Twitch Bypass] Enabled canClip in channel data");
+            }
+            if (result.data.channel.self.subscriptionBenefit) {
+              result.data.channel.self.subscriptionBenefit = null;
+            }
           }
 
-          // Check for VOD access requests
-          if (
-            body.operationName === "VideoAccessToken_Clip" ||
-            body.operationName === "PlaybackAccessToken" ||
-            body.operationName === "VideoMetadata" ||
-            (body.query &&
-              (body.query.includes("videoPlaybackAccessToken") ||
-                body.query.includes("subscribersOnly")))
-          ) {
-            console.log("[Twitch Bypass] Intercepted VOD access request");
+          // Remove subscriber-only restrictions
+          if (result.data.channel.viewersOnly === "SUBSCRIBERS") {
+            result.data.channel.viewersOnly = "PUBLIC";
+            console.log("[Twitch Bypass] Changed viewersOnly to PUBLIC");
           }
-        } catch (e) {
-          // If parsing fails, continue normally
+        }
+
+        // Handle user data
+        if (result.data.currentUser) {
+          if (result.data.currentUser.subscriptionBenefit) {
+            // Make it seem like user is subscribed
+            result.data.currentUser.subscriptionBenefit = { tier: "1000" };
+          }
+        }
+
+        // Handle video restrictions
+        if (result.data.video) {
+          if (result.data.video.viewableBy === "SUBSCRIBERS") {
+            result.data.video.viewableBy = "PUBLIC";
+            console.log("[Twitch Bypass] Changed video viewableBy to PUBLIC");
+          }
+          if (result.data.video.restrictedreason) {
+            result.data.video.restrictedreason = null;
+          }
         }
       }
-
-      // Intercept responses to modify subscription checks
-      return originalFetch.apply(this, args).then((response) => {
-        const clonedResponse = response.clone();
-
-        // Try to read and modify the response for subscription checks
-        clonedResponse
-          .json()
-          .then((data) => {
-            if (data && data.data) {
-              // Check for video/VOD data with subscription restrictions
-              if (
-                data.data.video &&
-                data.data.video.viewableBy === "SUBSCRIBERS"
-              ) {
-                console.log(
-                  "[Twitch Bypass] Detected subscriber-only VOD restriction"
-                );
-              }
-            }
-          })
-          .catch(() => {
-            // Not JSON or failed to parse, ignore
-          });
-
-        return response;
-      });
+    } catch (e) {
+      // Ignore parsing errors
     }
 
-    return originalFetch.apply(this, args);
+    return result;
   };
 
-  // Intercept XMLHttpRequest
-  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-    this._url = url;
-    return originalXHROpen.apply(this, [method, url, ...rest]);
-  };
+  // Intercept fetch to modify responses
+  window.fetch = async function (...args) {
+    const url = args[0];
+    const response = await originalFetch.apply(this, args);
 
-  XMLHttpRequest.prototype.send = function (data) {
-    if (this._url && this._url.includes("gql.twitch.tv") && data) {
+    // Only intercept Twitch GraphQL requests
+    if (typeof url === "string" && url.includes("gql.twitch.tv")) {
+      const clonedResponse = response.clone();
+
       try {
-        const body = JSON.parse(data);
-        if (
-          body.operationName === "CreateClip" ||
-          (body.query && body.query.includes("createClip"))
-        ) {
-          console.log("[Twitch Bypass] Intercepted clip creation XHR request");
+        const data = await clonedResponse.json();
+
+        // Modify the response data
+        let modified = false;
+
+        if (data && data.data) {
+          // Enable clipping
+          if (data.data.channel?.self?.canClip === false) {
+            data.data.channel.self.canClip = true;
+            modified = true;
+            console.log(
+              "[Twitch Bypass] Modified fetch response: enabled canClip"
+            );
+          }
+
+          // Remove VOD restrictions
+          if (data.data.video?.viewableBy === "SUBSCRIBERS") {
+            data.data.video.viewableBy = "PUBLIC";
+            modified = true;
+            console.log(
+              "[Twitch Bypass] Modified fetch response: changed viewableBy"
+            );
+          }
+
+          // Make user appear subscribed for permission checks
+          if (data.data.channel?.self) {
+            if (!data.data.channel.self.subscription) {
+              data.data.channel.self.subscription = { tier: "1000" };
+              modified = true;
+            }
+          }
         }
 
-        // Check for VOD access requests
-        if (
-          body.operationName === "VideoAccessToken_Clip" ||
-          body.operationName === "PlaybackAccessToken" ||
-          body.operationName === "VideoMetadata"
-        ) {
-          console.log("[Twitch Bypass] Intercepted VOD access XHR request");
+        // Return modified response if we changed anything
+        if (modified) {
+          return new Response(JSON.stringify(data), {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          });
         }
       } catch (e) {
-        // Continue normally if parsing fails
+        // Not JSON or error, return original
       }
     }
-    return originalXHRSend.apply(this, [data]);
+
+    return response;
   };
 
   // Remove subscriber-only overlays on VODs
@@ -163,30 +177,48 @@
     });
   }
 
-  // Wait for page to load and modify the clip button behavior
+  // Force enable clip button and remove restrictions
   function enableClipButton() {
-    // Find the clip button
-    const clipButton = document.querySelector(
-      '[data-a-target="player-clip-button"]'
-    );
+    // Find all possible clip button selectors
+    const clipButtons = [
+      document.querySelector('[data-a-target="player-clip-button"]'),
+      document.querySelector('[aria-label*="Clip"]'),
+      ...document.querySelectorAll('button[class*="clip" i]'),
+    ].filter(Boolean);
 
-    if (clipButton) {
-      // Remove disabled state if present
-      clipButton.removeAttribute("disabled");
-      clipButton.style.pointerEvents = "auto";
-      clipButton.style.opacity = "1";
+    let enabled = false;
+    clipButtons.forEach((clipButton) => {
+      if (clipButton) {
+        // Force enable the button
+        clipButton.removeAttribute("disabled");
+        clipButton.removeAttribute("aria-disabled");
+        clipButton.style.pointerEvents = "auto !important";
+        clipButton.style.opacity = "1 !important";
+        clipButton.style.cursor = "pointer";
 
-      // Remove any tooltip that says "Subscribe to clip"
-      const tooltip = clipButton.closest("[data-a-target]");
-      if (tooltip) {
-        tooltip.removeAttribute("aria-label");
-        tooltip.setAttribute("aria-label", "Clip");
+        // Remove click event blockers
+        const events = ["click", "mousedown", "mouseup"];
+        events.forEach((event) => {
+          clipButton.removeEventListener(
+            event,
+            (e) => e.stopPropagation(),
+            true
+          );
+        });
+
+        // Update aria-label
+        if (clipButton.getAttribute("aria-label")?.includes("Subscribe")) {
+          clipButton.setAttribute("aria-label", "Clip");
+        }
+
+        enabled = true;
       }
+    });
 
-      console.log("[Clip Bypass] Clip button enabled");
-      return true;
+    if (enabled) {
+      console.log("[Twitch Bypass] Clip button(s) enabled");
     }
-    return false;
+    return enabled;
   }
 
   // Use MutationObserver to watch for restrictions
@@ -226,57 +258,70 @@
     }
   }
 
-  // Patch the Twitch API responses
-  function patchTwitchAPI() {
-    // Override Object.defineProperty to intercept property definitions
-    const originalDefineProperty = Object.defineProperty;
-    Object.defineProperty = function (obj, prop, descriptor) {
-      // Check if this is defining a subscription-related property
+  // Aggressive property interception
+  Object.defineProperty = function (obj, prop, descriptor) {
+    // Intercept subscription and permission checks
+    if (typeof prop === "string") {
+      const lowerProp = prop.toLowerCase();
+
       if (
-        typeof prop === "string" &&
-        (prop.includes("subscription") ||
-          prop.includes("canClip") ||
-          prop.includes("clipPermission") ||
-          prop.includes("viewableBy") ||
-          prop.includes("subscribersOnly") ||
-          prop.includes("restrictionInfo"))
+        lowerProp.includes("canclip") ||
+        lowerProp.includes("clippermission") ||
+        lowerProp.includes("clipenabled")
       ) {
-        // If it's a getter that might return false, override it
+        // Force clip permission to true
         if (descriptor && descriptor.get) {
           const originalGetter = descriptor.get;
           descriptor.get = function () {
             const result = originalGetter.apply(this);
-            // If it's checking permissions, always return true/public access
-            if (typeof result === "boolean" && !result) {
+            if (result === false) {
+              console.log(`[Twitch Bypass] Overriding ${prop}: false -> true`);
               return true;
-            }
-            // If it's checking viewableBy, return 'PUBLIC'
-            if (result === "SUBSCRIBERS") {
-              return "PUBLIC";
             }
             return result;
           };
-        }
-
-        // If it's a value that restricts access, override it
-        if (descriptor && descriptor.value === false) {
-          descriptor.value = true;
-        }
-        if (descriptor && descriptor.value === "SUBSCRIBERS") {
-          descriptor.value = "PUBLIC";
+        } else if (descriptor && "value" in descriptor) {
+          if (descriptor.value === false) {
+            descriptor.value = true;
+            console.log(`[Twitch Bypass] Changed ${prop} value to true`);
+          }
         }
       }
 
-      return originalDefineProperty.apply(this, [obj, prop, descriptor]);
-    };
-  }
+      if (
+        lowerProp.includes("viewable") ||
+        lowerProp.includes("subscriber") ||
+        lowerProp.includes("restriction")
+      ) {
+        if (descriptor && descriptor.get) {
+          const originalGetter = descriptor.get;
+          descriptor.get = function () {
+            const result = originalGetter.apply(this);
+            if (result === "SUBSCRIBERS") {
+              console.log(
+                `[Twitch Bypass] Overriding ${prop}: SUBSCRIBERS -> PUBLIC`
+              );
+              return "PUBLIC";
+            }
+            if (result === false) {
+              return true;
+            }
+            return result;
+          };
+        } else if (descriptor && "value" in descriptor) {
+          if (descriptor.value === "SUBSCRIBERS") {
+            descriptor.value = "PUBLIC";
+          } else if (descriptor.value === false) {
+            descriptor.value = true;
+          }
+        }
+      }
+    }
 
-  // Initialize
-  console.log(
-    "[Twitch Bypass] Script loaded - Bypassing clip and VOD restrictions"
-  );
-  patchTwitchAPI();
+    return originalDefineProperty.apply(this, [obj, prop, descriptor]);
+  };
 
+  // Initialize watchers
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", watchForRestrictions);
   } else {
@@ -296,4 +341,6 @@
       }, 1000);
     }
   }).observe(document, { subtree: true, childList: true });
+
+  console.log("[Twitch Bypass] Script fully loaded - All bypasses active");
 })();

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         URLScan by XiSZ
 // @namespace    http://tampermonkey.net/
-// @version      0.01
-// @description  Scan URLs using urlscan.io API and display results with a GUI
+// @version      0.02
+// @description  Scan URLs using urlscan.io API and display results with a GUI. Alt + right-click anywhere to open the URL Scanner menu
 // @author       XiSZ
 // @icon         https://avatars.githubusercontent.com/u/40718990
 // @homepage     https://github.com/XiSZ/UserScripts
@@ -24,260 +24,280 @@
 
   // Add CSS styles
   GM_addStyle(`
-        #urlscan-widget {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 999999;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
+      #urlscan-root {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 999999;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
 
-        #urlscan-toggle {
-            background: transparent;
-            color: #667eea;
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            font-size: 28px;
-            cursor: move;
-            transition: transform 0.2s ease, filter 0.2s ease;
-            user-select: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-        }
+      #urlscan-panel {
+        display: none;
+        position: fixed;
+        width: 420px;
+        max-height: 650px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+        overflow: hidden;
+        pointer-events: all;
+      }
 
-        #urlscan-toggle:hover {
-            transform: scale(1.1);
-            filter: drop-shadow(0 3px 6px rgba(0,0,0,0.3));
-        }
+      #urlscan-panel.active {
+        display: flex;
+        flex-direction: column;
+      }
 
-        #urlscan-toggle.dragging {
-            cursor: grabbing;
-            transition: none;
-        }
+      .urlscan-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 12px 16px;
+        font-weight: 600;
+        font-size: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: move;
+        user-select: none;
+      }
 
-        #urlscan-panel {
-            display: none;
-            position: fixed;
-            width: 420px;
-            max-height: 650px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.25);
-            overflow: hidden;
-        }
+      .urlscan-header.dragging {
+        cursor: grabbing;
+      }
 
-        #urlscan-panel.active {
-            display: flex;
-            flex-direction: column;
-        }
+      .urlscan-close {
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        width: 28px;
+        height: 28px;
+        line-height: 1;
+      }
 
-        .urlscan-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 16px;
-            font-weight: 600;
-            font-size: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            cursor: move;
-            user-select: none;
-        }
+      .urlscan-body {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1;
+      }
 
-        .urlscan-header.dragging {
-            cursor: grabbing;
-        }
+      .urlscan-input-group {
+        margin-bottom: 12px;
+      }
 
-        .urlscan-close {
-            background: transparent;
-            border: none;
-            color: white;
-            font-size: 24px;
-            cursor: pointer;
-            padding: 0;
-            width: 28px;
-            height: 28px;
-            line-height: 1;
-        }
+      .urlscan-input-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #333;
+      }
 
-        .urlscan-body {
-            padding: 16px;
-            overflow-y: auto;
-            flex: 1;
-        }
+      .urlscan-input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 14px;
+        box-sizing: border-box;
+        transition: border-color 0.3s;
+      }
 
-        .urlscan-input-group {
-            margin-bottom: 12px;
-        }
+      .urlscan-input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
 
-        .urlscan-input-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 13px;
-            font-weight: 500;
-            color: #333;
-        }
+      .urlscan-btn {
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin-top: 8px;
+      }
 
-        .urlscan-input {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 14px;
-            box-sizing: border-box;
-            transition: border-color 0.3s;
-        }
+      .urlscan-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      }
 
-        .urlscan-input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
+      .urlscan-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
 
-        .urlscan-btn {
-            width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 8px;
-        }
+      .urlscan-results {
+        margin-top: 16px;
+      }
 
-        .urlscan-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
+      .urlscan-status {
+        padding: 10px;
+        border-radius: 6px;
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
 
-        .urlscan-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
+      .urlscan-status.loading {
+        background: #fff3cd;
+        color: #856404;
+      }
 
-        .urlscan-results {
-            margin-top: 16px;
-        }
+      .urlscan-status.success {
+        background: #d4edda;
+        color: #155724;
+      }
 
-        .urlscan-status {
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 12px;
-            font-size: 13px;
-        }
+      .urlscan-status.error {
+        background: #f8d7da;
+        color: #721c24;
+      }
 
-        .urlscan-status.loading {
-            background: #fff3cd;
-            color: #856404;
-        }
+      .urlscan-result-item {
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
 
-        .urlscan-status.success {
-            background: #d4edda;
-            color: #155724;
-        }
+      .urlscan-result-item strong {
+        display: inline-block;
+        min-width: 100px;
+        color: #333;
+      }
 
-        .urlscan-status.error {
-            background: #f8d7da;
-            color: #721c24;
-        }
+      .urlscan-result-item a {
+        color: #667eea;
+        text-decoration: none;
+        word-break: break-all;
+      }
 
-        .urlscan-result-item {
-            background: #f8f9fa;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 8px;
-            font-size: 13px;
-        }
+      .urlscan-result-item a:hover {
+        text-decoration: underline;
+      }
 
-        .urlscan-result-item strong {
-            display: inline-block;
-            min-width: 100px;
-            color: #333;
-        }
+      .urlscan-screenshot {
+        width: 100%;
+        border-radius: 6px;
+        margin-top: 12px;
+      }
 
-        .urlscan-result-item a {
-            color: #667eea;
-            text-decoration: none;
-            word-break: break-all;
-        }
+      .urlscan-visibility {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
 
-        .urlscan-result-item a:hover {
-            text-decoration: underline;
-        }
+      .urlscan-radio {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+      }
 
-        .urlscan-screenshot {
-            width: 100%;
-            border-radius: 6px;
-            margin-top: 12px;
-        }
+      .urlscan-radio input {
+        margin-right: 4px;
+      }
 
-        .urlscan-visibility {
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-        }
+      #urlscan-context-menu {
+        position: fixed;
+        display: none;
+        min-width: 220px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 10px 32px rgba(0,0,0,0.2);
+        overflow: hidden;
+        padding: 8px 0;
+        pointer-events: all;
+      }
 
-        .urlscan-radio {
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-        }
+      .urlscan-menu-item {
+        display: flex;
+        width: 100%;
+        background: transparent;
+        border: none;
+        padding: 10px 14px;
+        text-align: left;
+        font-size: 14px;
+        color: #1f2937;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
 
-        .urlscan-radio input {
-            margin-right: 4px;
-        }
+      .urlscan-menu-item:hover {
+        background: #f3f4f6;
+      }
+
+      .urlscan-menu-item:disabled {
+        color: #9ca3af;
+        cursor: not-allowed;
+        background: transparent;
+      }
+
+      .urlscan-menu-hint {
+        padding: 6px 14px 4px;
+        font-size: 12px;
+        color: #6b7280;
+        border-top: 1px solid #e5e7eb;
+      }
     `);
 
   // Create UI
-  const widget = document.createElement("div");
-  widget.id = "urlscan-widget";
-  widget.innerHTML = `
-        <button id="urlscan-toggle" title="URLScan.io Helper">🔍</button>
-        <div id="urlscan-panel">
-            <div class="urlscan-header">
-                <span>URL Scanner</span>
-                <button class="urlscan-close">×</button>
-            </div>
-            <div class="urlscan-body">
-                <div class="urlscan-input-group">
-                    <label>URL to scan:</label>
-                    <input type="text" id="urlscan-url" class="urlscan-input" placeholder="https://example.com">
-                </div>
-                <div class="urlscan-input-group">
-                    <label>Visibility:</label>
-                    <div class="urlscan-visibility">
-                        <label class="urlscan-radio">
-                            <input type="radio" name="visibility" value="public" checked>
-                            <span>Public</span>
-                        </label>
-                        <label class="urlscan-radio">
-                            <input type="radio" name="visibility" value="unlisted">
-                            <span>Unlisted</span>
-                        </label>
-                        <label class="urlscan-radio">
-                            <input type="radio" name="visibility" value="private">
-                            <span>Private</span>
-                        </label>
-                    </div>
-                </div>
-                <button id="urlscan-submit" class="urlscan-btn">Scan URL</button>
-                <button id="urlscan-current" class="urlscan-btn">Scan Current Page</button>
-                <div id="urlscan-results"></div>
-            </div>
+  const root = document.createElement("div");
+  root.id = "urlscan-root";
+  root.innerHTML = `
+      <div id="urlscan-panel">
+        <div class="urlscan-header">
+          <span>URL Scanner</span>
+          <button class="urlscan-close">×</button>
         </div>
+        <div class="urlscan-body">
+          <div class="urlscan-input-group">
+            <label>URL to scan:</label>
+            <input type="text" id="urlscan-url" class="urlscan-input" placeholder="https://example.com">
+          </div>
+          <div class="urlscan-input-group">
+            <label>Visibility:</label>
+            <div class="urlscan-visibility">
+              <label class="urlscan-radio">
+                <input type="radio" name="visibility" value="public" checked>
+                <span>Public</span>
+              </label>
+              <label class="urlscan-radio">
+                <input type="radio" name="visibility" value="unlisted">
+                <span>Unlisted</span>
+              </label>
+              <label class="urlscan-radio">
+                <input type="radio" name="visibility" value="private">
+                <span>Private</span>
+              </label>
+            </div>
+          </div>
+          <button id="urlscan-submit" class="urlscan-btn">Scan URL</button>
+          <button id="urlscan-current" class="urlscan-btn">Scan Current Page</button>
+          <div id="urlscan-results"></div>
+        </div>
+      </div>
+      <div id="urlscan-context-menu">
+        <button class="urlscan-menu-item" data-action="open-panel">Open URL Scanner</button>
+        <button class="urlscan-menu-item" data-action="scan-current">Scan Current Page</button>
+        <button class="urlscan-menu-item urlscan-menu-link" data-action="scan-link">Scan Link Target</button>
+        <div class="urlscan-menu-hint">Alt + right-click to open</div>
+      </div>
     `;
 
-  document.body.appendChild(widget);
+  document.body.appendChild(root);
 
   // UI Elements
-  const toggleBtn = document.getElementById("urlscan-toggle");
   const panel = document.getElementById("urlscan-panel");
   const closeBtn = document.querySelector(".urlscan-close");
   const urlInput = document.getElementById("urlscan-url");
@@ -285,17 +305,12 @@
   const currentBtn = document.getElementById("urlscan-current");
   const resultsDiv = document.getElementById("urlscan-results");
   const headerDiv = document.querySelector(".urlscan-header");
+  const contextMenu = document.getElementById("urlscan-context-menu");
+  const linkMenuItem = contextMenu.querySelector(".urlscan-menu-link");
 
-  // Drag state objects
-  const buttonDrag = {
-    active: false,
-    moved: false,
-    xOffset: 0,
-    yOffset: 0,
-    initialX: 0,
-    initialY: 0,
-  };
+  let lastLinkHref = null;
 
+  // Drag state object for panel
   const panelDrag = {
     active: false,
     moved: false,
@@ -305,40 +320,11 @@
     initialY: 0,
   };
 
-  toggleBtn.addEventListener("mousedown", dragStart);
   headerDiv.addEventListener("mousedown", panelDragStart);
   document.addEventListener("mousemove", drag);
   document.addEventListener("mouseup", dragEnd);
 
-  function dragStart(e) {
-    if (e.target === toggleBtn) {
-      buttonDrag.initialX = e.clientX - buttonDrag.xOffset;
-      buttonDrag.initialY = e.clientY - buttonDrag.yOffset;
-      buttonDrag.active = true;
-      buttonDrag.moved = false;
-      toggleBtn.classList.add("dragging");
-    }
-  }
-
   function drag(e) {
-    if (buttonDrag.active) {
-      e.preventDefault();
-
-      const currentX = e.clientX - buttonDrag.initialX;
-      const currentY = e.clientY - buttonDrag.initialY;
-
-      if (
-        Math.abs(currentX - buttonDrag.xOffset) > 5 ||
-        Math.abs(currentY - buttonDrag.yOffset) > 5
-      ) {
-        buttonDrag.moved = true;
-      }
-
-      buttonDrag.xOffset = currentX;
-      buttonDrag.yOffset = currentY;
-      setTranslate(currentX, currentY, widget);
-    }
-
     if (panelDrag.active) {
       e.preventDefault();
 
@@ -362,10 +348,6 @@
   }
 
   function dragEnd() {
-    if (buttonDrag.active) {
-      buttonDrag.active = false;
-      toggleBtn.classList.remove("dragging");
-    }
     if (panelDrag.active) {
       panelDrag.active = false;
       headerDiv.classList.remove("dragging");
@@ -375,74 +357,128 @@
   function panelDragStart(e) {
     if (e.target.classList.contains("urlscan-close")) return;
 
-    panelDrag.initialX = e.clientX - panelDrag.xOffset;
-    panelDrag.initialY = e.clientY - panelDrag.yOffset;
+    // Initialize offsets from current panel position to avoid jumps on first drag
+    panelDrag.xOffset = 0;
+    panelDrag.yOffset = 0;
+    panelDrag.initialX = e.clientX;
+    panelDrag.initialY = e.clientY;
     panelDrag.active = true;
     panelDrag.moved = false;
     headerDiv.classList.add("dragging");
     e.preventDefault();
   }
 
-  function setTranslate(xPos, yPos, el) {
-    el.style.transform = `translate3d(${xPos}px, ${yPos}px, 0)`;
+  function openPanel(presetUrl, anchorX, anchorY) {
+    if (presetUrl) {
+      urlInput.value = presetUrl;
+    }
+
+    positionPanel(anchorX, anchorY);
+    panel.classList.add("active");
+
+    setTimeout(() => {
+      urlInput.focus();
+      urlInput.select();
+    }, 0);
   }
 
-  // Toggle panel
-  toggleBtn.addEventListener("click", () => {
-    if (!buttonDrag.moved) {
-      const isOpening = !panel.classList.contains("active");
-      panel.classList.toggle("active");
+  let lastContextX = 0;
+  let lastContextY = 0;
 
-      if (isOpening) {
-        positionPanel();
-      }
+  function showContextMenu(x, y) {
+    lastContextX = x;
+    lastContextY = y;
+
+    const menuWidth = contextMenu.offsetWidth || 220;
+    const menuHeight = contextMenu.offsetHeight || 170;
+    const padding = 8;
+
+    let left = Math.min(x, window.innerWidth - menuWidth - padding);
+    let top = Math.min(y, window.innerHeight - menuHeight - padding);
+
+    left = Math.max(padding, left);
+    top = Math.max(padding, top);
+
+    contextMenu.style.left = `${left}px`;
+    contextMenu.style.top = `${top}px`;
+    contextMenu.style.display = "block";
+  }
+
+  function hideContextMenu() {
+    contextMenu.style.display = "none";
+  }
+
+  function handleContextMenu(e) {
+    if (!e.altKey) return;
+    e.preventDefault();
+
+    lastLinkHref = e.target.closest("a")?.href || null;
+    linkMenuItem.disabled = !lastLinkHref;
+    showContextMenu(e.clientX, e.clientY);
+  }
+
+  function handleMenuClick(e) {
+    const actionButton = e.target.closest("[data-action]");
+    if (!actionButton) return;
+
+    const action = actionButton.dataset.action;
+    hideContextMenu();
+
+    if (action === "open-panel") {
+      openPanel(
+        urlInput.value || window.location.href,
+        lastContextX,
+        lastContextY
+      );
+    } else if (action === "scan-current") {
+      urlInput.value = window.location.href;
+      openPanel(window.location.href, lastContextX, lastContextY);
+      scanURL(window.location.href);
+    } else if (action === "scan-link" && lastLinkHref) {
+      urlInput.value = lastLinkHref;
+      openPanel(lastLinkHref, lastContextX, lastContextY);
+      scanURL(lastLinkHref);
+    }
+  }
+
+  contextMenu.addEventListener("click", handleMenuClick);
+  document.addEventListener("contextmenu", handleContextMenu);
+  document.addEventListener("click", (e) => {
+    if (!contextMenu.contains(e.target)) {
+      hideContextMenu();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      hideContextMenu();
+      panel.classList.remove("active");
     }
   });
 
   // Position panel to stay within viewport
-  function positionPanel() {
-    const buttonRect = toggleBtn.getBoundingClientRect();
+  function positionPanel(preferredX, preferredY) {
     const panelWidth = 420;
     const panelHeight = Math.min(650, window.innerHeight - 40);
-    const padding = 10;
-    const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+    const padding = 16;
 
-    let left, top;
+    let left =
+      typeof preferredX === "number"
+        ? preferredX - panelWidth / 2
+        : window.innerWidth - panelWidth - padding;
+    let top =
+      typeof preferredY === "number"
+        ? preferredY + 12
+        : window.innerHeight - panelHeight - padding;
 
-    // Calculate horizontal position - center the panel above/below the button
-    left = buttonCenterX - panelWidth / 2;
-
-    // Adjust if panel would go off left edge
-    if (left < padding) {
-      left = padding;
-    }
-
-    // Adjust if panel would go off right edge
-    if (left + panelWidth > window.innerWidth - padding) {
-      left = window.innerWidth - panelWidth - padding;
-    }
-
-    // Calculate vertical position - always try above first
-    const spaceAbove = buttonRect.top;
-    const spaceBelow = window.innerHeight - buttonRect.bottom;
-
-    if (spaceAbove >= panelHeight + padding || spaceAbove >= spaceBelow) {
-      // Place above the button
-      top = buttonRect.top - panelHeight - padding;
-
-      // Make sure it doesn't go off top
-      if (top < padding) {
-        top = padding;
-      }
-    } else {
-      // Place below the button if not enough space above
-      top = buttonRect.bottom + padding;
-
-      // Make sure it doesn't go off bottom
-      if (top + panelHeight > window.innerHeight - padding) {
-        top = window.innerHeight - panelHeight - padding;
-      }
-    }
+    left = Math.max(
+      padding,
+      Math.min(left, window.innerWidth - panelWidth - padding)
+    );
+    top = Math.max(
+      padding,
+      Math.min(top, window.innerHeight - panelHeight - padding)
+    );
 
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
@@ -609,6 +645,6 @@
   }
 
   console.log(
-    "URLScan.io Helper loaded! Click the search icon in the bottom-right corner."
+    "URLScan.io Helper loaded! Alt + right-click anywhere to open the URL scanner menu."
   );
 })();

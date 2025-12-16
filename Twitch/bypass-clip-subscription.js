@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch Bypass Subscription Restrictions
 // @namespace    http://tampermonkey.net/
-// @version      0.02
+// @version      0.03
 // @description  Bypass subscriber-only clip creation and VOD restrictions on Twitch
 // @author       XiSZ
 // @icon         https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png
@@ -177,6 +177,124 @@
     });
   }
 
+  // Direct clip creation bypass - intercept and replace the button's click handler
+  function forceClipCreation() {
+    const clipButtons = [
+      document.querySelector('[data-a-target="player-clip-button"]'),
+      document.querySelector('[aria-label*="Clip"]'),
+    ].filter(Boolean);
+
+    clipButtons.forEach((button) => {
+      if (button && !button.dataset.bypassPatched) {
+        // Mark as patched to avoid duplicate handlers
+        button.dataset.bypassPatched = "true";
+
+        // Remove all existing click listeners by cloning the button
+        const newButton = button.cloneNode(true);
+        button.parentNode.replaceChild(newButton, button);
+
+        // Add our own click handler
+        newButton.addEventListener(
+          "click",
+          async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            console.log(
+              "[Twitch Bypass] Clip button clicked - creating clip..."
+            );
+
+            try {
+              // Get channel name from URL
+              const pathParts = window.location.pathname.split("/");
+              const channelName = pathParts[1];
+
+              if (!channelName) {
+                alert("Could not determine channel name");
+                return;
+              }
+
+              // Create clip via GraphQL API
+              const response = await originalFetch(
+                "https://gql.twitch.tv/gql",
+                {
+                  method: "POST",
+                  headers: {
+                    "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    operationName: "CreateClip",
+                    variables: {
+                      input: {
+                        broadcasterID: channelName,
+                        quality: "source",
+                      },
+                    },
+                    extensions: {
+                      persistedQuery: {
+                        version: 1,
+                        sha256Hash:
+                          "7e6a6b5c4d7f3b1e2a5c8d9f0e1b2a3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9",
+                      },
+                    },
+                  }),
+                }
+              );
+
+              const data = await response.json();
+
+              if (data.data?.createClip?.clip) {
+                console.log("[Twitch Bypass] Clip created successfully!");
+                // Show success notification (Twitch usually does this)
+                const clipSlug = data.data.createClip.clip.slug;
+                const clipUrl = `https://www.twitch.tv/${channelName}/clip/${clipSlug}`;
+
+                // Try to show Twitch's native notification or alert
+                setTimeout(() => {
+                  const notification = document.createElement("div");
+                  notification.style.cssText = `
+                    position: fixed;
+                    top: 70px;
+                    right: 20px;
+                    background: #18181b;
+                    color: white;
+                    padding: 15px 20px;
+                    border-radius: 6px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    z-index: 10000;
+                    font-family: 'Roobert', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                  `;
+                  notification.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <div>✂️ Clip Created!</div>
+                      <a href="${clipUrl}" target="_blank" style="color: #a970ff; text-decoration: none;">View Clip</a>
+                    </div>
+                  `;
+                  document.body.appendChild(notification);
+
+                  setTimeout(() => notification.remove(), 5000);
+                }, 100);
+              } else {
+                console.error("[Twitch Bypass] Clip creation failed:", data);
+                alert("Failed to create clip. Check console for details.");
+              }
+            } catch (err) {
+              console.error("[Twitch Bypass] Error creating clip:", err);
+              alert("Error creating clip: " + err.message);
+            }
+          },
+          true
+        );
+
+        console.log(
+          "[Twitch Bypass] Patched clip button with direct creation handler"
+        );
+      }
+    });
+  }
+
   // Force enable clip button and remove restrictions
   function enableClipButton() {
     // Find all possible clip button selectors
@@ -229,6 +347,7 @@
     const intervalId = setInterval(() => {
       attempts++;
       enableClipButton();
+      forceClipCreation(); // Add clip creation handler
       removeVODRestrictions();
 
       if (attempts >= maxAttempts) {
@@ -239,6 +358,7 @@
     // Also use MutationObserver for dynamic changes
     const observer = new MutationObserver(() => {
       enableClipButton();
+      forceClipCreation(); // Add clip creation handler
       removeVODRestrictions();
     });
 

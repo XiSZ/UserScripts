@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Twitch Bypass Subscription Restrictions
+// @name         Twitch Bypass Subscriber-Only VODs
 // @namespace    http://tampermonkey.net/
-// @version      0.03
-// @description  Bypass subscriber-only clip creation and VOD restrictions on Twitch
+// @version      0.05
+// @description  Bypass subscriber-only VOD viewing restrictions on Twitch
 // @author       XiSZ
 // @icon         https://assets.twitch.tv/assets/favicon-32-e29e246c157142c94346.png
 // @homepage     https://github.com/XiSZ/UserScripts

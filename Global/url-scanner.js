@@ -442,7 +442,25 @@
   }
 
   contextMenu.addEventListener("click", handleMenuClick);
-  document.addEventListener("contextmenu", handleContextMenu);
+  // Use capture phase so site-level handlers cannot block us
+  document.addEventListener("contextmenu", handleContextMenu, true);
+  window.addEventListener("contextmenu", handleContextMenu, true);
+  if (document.body) {
+    document.body.addEventListener("contextmenu", handleContextMenu, true);
+  }
+  // Fallback: capture right-button mousedown in case contextmenu is fully suppressed
+  document.addEventListener(
+    "mousedown",
+    (e) => {
+      if (e.button === 2 && e.altKey) {
+        e.preventDefault();
+        lastLinkHref = e.target.closest("a")?.href || null;
+        linkMenuItem.disabled = !lastLinkHref;
+        showContextMenu(e.clientX, e.clientY);
+      }
+    },
+    true
+  );
   document.addEventListener("click", (e) => {
     if (!contextMenu.contains(e.target)) {
       hideContextMenu();
@@ -453,6 +471,10 @@
     if (e.key === "Escape") {
       hideContextMenu();
       panel.classList.remove("active");
+    }
+    // Keyboard fallback: Alt+Shift+S opens the panel
+    if (e.altKey && e.shiftKey && (e.key === "S" || e.key === "s")) {
+      openPanel(urlInput.value || window.location.href);
     }
   });
 

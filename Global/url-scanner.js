@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         URLScan by XiSZ
 // @namespace    http://tampermonkey.net/
-// @version      0.03
-// @description  Scan URLs using urlscan.io API and display results with a GUI.
+// @version      0.04
+// @description  Scan URLs using urlscan.io API and display results with a GUI. Alt + right-click to open (on links to scan them directly). Alt+Shift+S also works.
 // @author       XiSZ
 // @icon         https://avatars.githubusercontent.com/u/40718990
 // @homepage     https://github.com/XiSZ/UserScripts
